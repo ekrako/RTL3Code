@@ -253,7 +253,7 @@ export const ChatHeader = memo(function ChatHeader({
       ref={breadcrumbContainerRef}
       className={cn(
         "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-24",
+        rightPanelOpen ? "pe-10" : "pe-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
@@ -384,7 +384,7 @@ export const ChatHeader = memo(function ChatHeader({
                 render={
                   <h2
                     aria-label={activeThreadTitle}
-                    className="min-w-0 flex-1"
+                    className="min-w-0 max-w-full"
                     dir={textDirection(activeThreadTitle)}
                   />
                 }

@@ -1,9 +1,9 @@
 import "./intl-polyfills";
-import { resolveLocale } from "@t3tools/client-runtime/locales";
+import { localeDirection, resolveLocale } from "@t3tools/client-runtime/locales";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { GTProvider, initializeGT, useLocale } from "gt-react-native";
-import { useDeferredValue, useEffect, type ReactNode } from "react";
+import { createContext, use, useDeferredValue, useEffect, type ReactNode } from "react";
 import { Platform, TurboModuleRegistry, View, type TurboModule } from "react-native";
 
 import { mobilePreferencesAtom } from "../state/preferences";
@@ -23,6 +23,7 @@ const CATALOGS: Readonly<Record<string, () => unknown>> = {
   ko: () => require("./translations/ko.json"),
   ru: () => require("./translations/ru.json"),
   sv: () => require("./translations/sv.json"),
+  he: () => require("./translations/he.json"),
 };
 
 initializeGT({
@@ -49,6 +50,12 @@ function readSystemLocales(): ReadonlyArray<string> {
   }
 }
 
+const InterfaceDirectionContext = createContext<"ltr" | "rtl">("ltr");
+
+export function useInterfaceDirection() {
+  return use(InterfaceDirectionContext);
+}
+
 export function useLanguagePreference(): string {
   const preferences = useAtomValue(mobilePreferencesAtom);
   return AsyncResult.isSuccess(preferences)
@@ -63,11 +70,14 @@ export function I18nProvider(props: { readonly children: ReactNode }) {
   const locale = useDeferredValue(
     resolveLocale(useLanguagePreference(), readSystemLocales(), SUPPORTED_LOCALES, DEFAULT_LOCALE),
   );
+  const direction = localeDirection(locale);
   return (
-    <GTProvider locale={locale} fallback={<View className="flex-1 bg-screen" />}>
-      <ActiveLocale />
-      {props.children}
-    </GTProvider>
+    <InterfaceDirectionContext value={direction}>
+      <GTProvider locale={locale} fallback={<View className="flex-1 bg-screen" />}>
+        <ActiveLocale />
+        <View style={{ flex: 1, direction }}>{props.children}</View>
+      </GTProvider>
+    </InterfaceDirectionContext>
   );
 }
 
