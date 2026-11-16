@@ -1,8 +1,9 @@
-import { resolveLocale } from "@t3tools/client-runtime/locales";
+import "./intl-polyfills";
+import { localeDirection, resolveLocale } from "@t3tools/client-runtime/locales";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { GTProvider, initializeGT } from "gt-react-native";
-import { useDeferredValue, type ReactNode } from "react";
+import { createContext, use, useDeferredValue, type ReactNode } from "react";
 import { Platform, TurboModuleRegistry, View, type TurboModule } from "react-native";
 
 import { mobilePreferencesAtom } from "../state/preferences";
@@ -10,6 +11,7 @@ import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "./locales";
 import de from "./translations/de.json";
 import es from "./translations/es.json";
 import fr from "./translations/fr.json";
+import he from "./translations/he.json";
 import ja from "./translations/ja.json";
 import ko from "./translations/ko.json";
 import ptBR from "./translations/pt-BR.json";
@@ -26,6 +28,7 @@ const TRANSLATIONS: Readonly<Record<string, Record<string, string>>> = {
   ja,
   ko,
   ru,
+  he,
 };
 
 initializeGT({
@@ -50,6 +53,12 @@ function readSystemLocales(): ReadonlyArray<string> {
   }
 }
 
+const InterfaceDirectionContext = createContext<"ltr" | "rtl">("ltr");
+
+export function useInterfaceDirection() {
+  return use(InterfaceDirectionContext);
+}
+
 export function useLanguagePreference(): string {
   const preferences = useAtomValue(mobilePreferencesAtom);
   return AsyncResult.isSuccess(preferences)
@@ -64,9 +73,12 @@ export function I18nProvider(props: { readonly children: ReactNode }) {
   const locale = useDeferredValue(
     resolveLocale(useLanguagePreference(), readSystemLocales(), SUPPORTED_LOCALES, DEFAULT_LOCALE),
   );
+  const direction = localeDirection(locale);
   return (
-    <GTProvider locale={locale} fallback={<View className="flex-1 bg-screen" />}>
-      {props.children}
-    </GTProvider>
+    <InterfaceDirectionContext value={direction}>
+      <GTProvider locale={locale} fallback={<View className="flex-1 bg-screen" />}>
+        <View style={{ flex: 1, direction }}>{props.children}</View>
+      </GTProvider>
+    </InterfaceDirectionContext>
   );
 }

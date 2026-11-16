@@ -1,3 +1,4 @@
+import { I18nProvider, useInterfaceDirection } from "./i18n/I18nProvider";
 import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
 import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
 import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
@@ -259,7 +260,9 @@ export default function App() {
     <RegistryContext.Provider value={appAtomRegistry}>
       <CloudAuthProvider>
         <AppearancePreferencesProvider>
-          <AppContent />
+          <I18nProvider>
+            <AppContent />
+          </I18nProvider>
         </AppearancePreferencesProvider>
       </CloudAuthProvider>
     </RegistryContext.Provider>
@@ -267,6 +270,7 @@ export default function App() {
 }
 
 function AppContent() {
+  const direction = useInterfaceDirection();
   const { themeAppearance } = useAppearancePreferences();
   const navigationTheme = useMobileNavigationTheme();
 
@@ -291,6 +295,7 @@ function AppContent() {
             <GlobalVoiceInputControl>
               <NativeLayoutMetricsProvider>
                 <Navigation
+                  direction={direction}
                   ref={attachRootNavigation}
                   linking={appLinking}
                   onReady={handleNavigationReady}
