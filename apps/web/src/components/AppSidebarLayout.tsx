@@ -1,3 +1,4 @@
+import { useDirection } from "@base-ui/react/direction-provider";
 import { useAtomValue } from "@effect/atom-react";
 import { useGT } from "gt-react";
 import * as Schema from "effect/Schema";
@@ -387,7 +388,7 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
     <div
       ref={appShellCommandsRef}
       className={cn(
-        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
+        "pointer-events-none fixed start-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ms-px flex h-[var(--workspace-topbar-height)] items-center",
         mobileSidebarSheetMounted && "hidden",
       )}
       data-sidebar-control=""
@@ -426,6 +427,7 @@ export function AppSidebarLayout({
 }) {
   const gt = useGT();
   const sidebarArea = workspaceAreaProps("sidebar", 0, gt("Threads"));
+  const direction = useDirection();
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
     pendingKey: null,
@@ -477,7 +479,7 @@ export function AppSidebarLayout({
           <>
             <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
             <Sidebar
-              side="left"
+              side={direction === "rtl" ? "right" : "left"}
               collapsible="offcanvas"
               data-app-sidebar=""
               {...sidebarArea}
