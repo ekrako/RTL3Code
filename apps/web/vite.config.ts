@@ -386,10 +386,10 @@ export default defineConfig(({ command }) => {
       port,
       strictPort: true,
       allowedHosts,
-      // Warm the module graph before first request to avoid serial import transforms over tailnet.
+      // Tests supply their own entries; only warm the app for remote dev requests.
       // Bundled dev ignores this; warmBundledDevPlugin handles it there.
       warmup: {
-        clientFiles: ["./src/main.tsx"],
+        clientFiles: process.env.VITEST ? [] : ["./src/main.tsx"],
       },
       watch: { exclude: rolldownWatchExclude },
       ...(devProxyTarget
