@@ -642,7 +642,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("RTL3Code AppIm
         const home = NodePath.join(root, "home with spaces $literal");
         const fixture = NodePath.join(root, "download");
         const bin = NodePath.join(home, ".local/bin");
-        const arch = HostProcess.Architecture.defaultValue() === "arm64" ? "arm64" : "x64";
+        const arch = HostProcess.Architecture.defaultValue() === "arm64" ? "arm64" : "x86_64";
         const asset = `RTL3Code-${arch}.AppImage`;
         await NodeFSP.mkdir(bin, { recursive: true });
         await NodeFSP.mkdir(fixture);
