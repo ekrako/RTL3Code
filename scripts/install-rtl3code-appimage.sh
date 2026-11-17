@@ -2,13 +2,13 @@
 set -euo pipefail
 
 case "$(uname -s)/$(uname -m)" in
-  Linux/x86_64) arch=x64 ;;
-  Linux/aarch64 | Linux/arm64) arch=arm64 ;;
+  Linux/x86_64) asset_arch=x86_64 ;;
+  Linux/aarch64 | Linux/arm64) asset_arch=arm64 ;;
   *) printf 'RTL3Code AppImage requires Linux x86_64 or arm64.\n' >&2; exit 1 ;;
 esac
 
 release_url=https://github.com/ekrako/RTL3Code/releases/latest/download
-asset="RTL3Code-$arch.AppImage"
+asset="RTL3Code-$asset_arch.AppImage"
 data_root="${XDG_DATA_HOME:-$HOME/.local/share}"
 install_root="$data_root/rtl3code"
 bin_root="$HOME/.local/bin"
