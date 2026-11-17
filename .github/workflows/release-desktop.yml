@@ -133,7 +133,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     # Windows waits for the Linux CLI archive inside its own budget (see
     # "Wait for Linux CLI archive"), so it gets that wait on top of the usual 30.
-    timeout-minutes: ${{ inputs.platform == 'win' && 70 || 30 }}
+    timeout-minutes: ${{ inputs.platform == 'win' && 90 || 60 }}
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ inputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ inputs.clerk_jwt_template }}
@@ -741,7 +741,7 @@ jobs:
             appimage=$(ls "$GITHUB_WORKSPACE"/release/*.AppImage)
             chmod +x "$appimage"
             (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract >/dev/null)
-            xvfb-run -a "${check[@]}" --executable "$RUNNER_TEMP/squashfs-root/t3code"
+            xvfb-run -a "${check[@]}" --executable "$RUNNER_TEMP/squashfs-root/rtl3code"
           fi
 
       - name: Upload launch check output

@@ -20,6 +20,11 @@ export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
 }
 
+// Existing remote servers allow the t3code renderer origin; only OS app links use our scheme.
+export function getDesktopAppLinkScheme(isDevelopment: boolean): string {
+  return isDevelopment ? "rtl3code-dev" : "rtl3code";
+}
+
 function getDesktopOrigin(isDevelopment: boolean): string {
   return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}`;
 }
