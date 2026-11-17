@@ -20,7 +20,7 @@ hour and publish only when `main` changed and at least six hours have passed sin
 the last nightly. Repository variable `PAUSE_NIGHTLY=true` pauses scheduled runs.
 Nightly versions preview the patch after the latest stable. Builds are serialized.
 
-CI for the exact source commit and the focused release checks must pass, every platform must build, and
+CI for the exact source commit must pass, every platform must build, and
 the Linux x64/macOS arm64 packaged launch checks must pass before publication.
 The release stays a draft while assets upload; updater clients only see it after
 publication. Failed runs can leave a draft, which a rerun can complete. After a
