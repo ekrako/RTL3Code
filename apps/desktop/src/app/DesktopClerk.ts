@@ -96,6 +96,7 @@ function createDesktopClerkBridge(stateDir: string, isDevelopment: boolean, user
     passkeys: true,
     renderer: {
       scheme: ElectronProtocol.getDesktopScheme(isDevelopment),
+      oauthScheme: ElectronProtocol.getDesktopAppLinkScheme(isDevelopment),
       host: ElectronProtocol.DESKTOP_HOST,
     },
   });
