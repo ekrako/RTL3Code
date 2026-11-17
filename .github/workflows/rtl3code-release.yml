@@ -105,7 +105,7 @@ jobs:
       - name: Align package versions
         run: node scripts/update-release-package-versions.ts "${{ needs.prepare.outputs.version }}"
       - name: Focused release checks
-        run: vp test run scripts/build-desktop-artifact.test.ts scripts/merge-release-update-manifests.test.ts packages/shared/src/cliRelease.test.ts apps/desktop/src/updates/githubUpdateFeed.test.ts apps/server/src/cloud/npmRelease.test.ts
+        run: vp test run scripts/build-desktop-artifact.test.ts scripts/merge-release-update-manifests.test.ts packages/shared/src/cliRelease.test.ts apps/desktop/src/updates/githubUpdateFeed.test.ts apps/desktop/src/electron/clerkProtocol.test.ts apps/server/src/cloud/npmRelease.test.ts
       - name: Build desktop bundle
         env:
           T3CODE_TELEMETRY_CHANNEL: dev

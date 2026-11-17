@@ -1,0 +1,53 @@
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -38,7 +38,7 @@
+ const CALLBACK_TIMEOUT_MS = 180 * 1e3;
+ const ATTEMPT_PARAM = "__clerk_oauth_attempt";
+ function buildRedirectUrl(options) {
+-	return `${options.renderer.scheme}://${options.renderer.host}/`;
++	return `${options.renderer.oauthScheme ?? options.renderer.scheme}://${options.renderer.host}/`;
+ }
+ function isMatchingCallbackUrl(url, redirectUrl) {
+ 	try {
+@@ -92,7 +92,7 @@
+ 		const callbackUrl = findMatchingCallbackUrl(argv, redirectUrl);
+ 		if (callbackUrl) handleCallbackUrl(callbackUrl);
+ 	};
+-	app.setAsDefaultProtocolClient(options.renderer.scheme);
++	app.setAsDefaultProtocolClient(options.renderer.oauthScheme ?? options.renderer.scheme);
+ 	app.on("open-url", openUrlListener);
+ 	app.on("second-instance", secondInstanceListener);
+ 	ipcMain.handle(OAUTH_TRANSPORT_CHANNELS.getRedirectUrl, (event) => {
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -39,7 +39,7 @@
+ const CALLBACK_TIMEOUT_MS = 180 * 1e3;
+ const ATTEMPT_PARAM = "__clerk_oauth_attempt";
+ function buildRedirectUrl(options) {
+-	return `${options.renderer.scheme}://${options.renderer.host}/`;
++	return `${options.renderer.oauthScheme ?? options.renderer.scheme}://${options.renderer.host}/`;
+ }
+ function isMatchingCallbackUrl(url, redirectUrl) {
+ 	try {
+@@ -93,7 +93,7 @@
+ 		const callbackUrl = findMatchingCallbackUrl(argv, redirectUrl);
+ 		if (callbackUrl) handleCallbackUrl(callbackUrl);
+ 	};
+-	electron.app.setAsDefaultProtocolClient(options.renderer.scheme);
++	electron.app.setAsDefaultProtocolClient(options.renderer.oauthScheme ?? options.renderer.scheme);
+ 	electron.app.on("open-url", openUrlListener);
+ 	electron.app.on("second-instance", secondInstanceListener);
+ 	electron.ipcMain.handle(require_ipc.OAUTH_TRANSPORT_CHANNELS.getRedirectUrl, (event) => {
+diff --git a/dist/types/shared/types.d.ts b/dist/types/shared/types.d.ts
+--- a/dist/types/shared/types.d.ts
++++ b/dist/types/shared/types.d.ts
+@@ -59,6 +59,7 @@
+      * Custom scheme used for the renderer origin.
+      */
+     scheme: string;
++    oauthScheme?: string;
+     /**
+      * Custom host used for the renderer origin.
+      */
