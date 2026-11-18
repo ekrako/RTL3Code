@@ -1,0 +1,53 @@
+name: Sync upstream main
+
+on:
+  schedule:
+    - cron: "3-58/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'ekrako/RTL3Code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check for upstream changes
+        id: check
+        env:
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          source_sha=$(git ls-remote --exit-code https://github.com/pingdotgg/t3code.git refs/heads/main | cut -f1)
+          target_sha=$(git ls-remote --exit-code "$TARGET_URL" refs/heads/upstream-main | cut -f1)
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+          if [[ "$source_sha" != "$target_sha" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout mirror
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: upstream-main
+          sparse-checkout: README.md
+          sparse-checkout-cone-mode: false
+
+      - name: Mirror upstream main without extra commits
+        if: steps.check.outputs.changed == 'true'
+        env:
+          TARGET_SHA: ${{ steps.check.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/pingdotgg/t3code.git
+          git config remote.upstream.promisor true
+          git config remote.upstream.partialclonefilter blob:none
+          git fetch --no-tags --filter=blob:none upstream refs/heads/main:refs/remotes/upstream/main
+          git push --force-with-lease="refs/heads/upstream-main:$TARGET_SHA" origin refs/remotes/upstream/main:refs/heads/upstream-main
+          echo "Mirrored pingdotgg/t3code main at $(git rev-parse refs/remotes/upstream/main)" >> "$GITHUB_STEP_SUMMARY"
