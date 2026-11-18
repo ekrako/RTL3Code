@@ -43,10 +43,14 @@ each release supplies the version and database migration compatibility used by
 web, desktop and mobile clients when inspecting a server or switching tracks.
 The standalone server updater downloads its archives from the same repository.
 
-Signing remains optional for building artifacts. Windows builds without signing
-credentials may show SmartScreen warnings. macOS automatic updates require a
-consistent Developer ID signature; unsigned DMGs are manual installs until the
-repository's Apple signing secrets and associated app provisioning are configured.
-The reusable packaging workflow lists the supported signing secrets. Mobile
-App Store/Google Play builds and Expo OTA require separate application identities
-and store credentials and are not published by this desktop workflow.
+Stable and nightly releases require a Developer ID Application certificate and
+Apple notarization for both Mac architectures. Add the GitHub Actions secrets
+`CSC_LINK` (base64-encoded Developer ID Application .p12), `CSC_KEY_PASSWORD`,
+`APPLE_API_KEY` (the .p8 file contents), `APPLE_API_KEY_ID`, and
+`APPLE_API_ISSUER`. The Mac jobs check the app in both the installer DMG and
+the updater ZIP with macOS before uploading either artifact. Keep the same
+Developer ID team for automatic updates.
+
+Windows builds without signing credentials may show SmartScreen warnings.
+Mobile App Store/Google Play builds and Expo OTA require separate application
+identities and store credentials and are not published by this desktop workflow.

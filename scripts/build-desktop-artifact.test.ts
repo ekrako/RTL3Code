@@ -38,7 +38,7 @@ import {
   MissingMacPasskeyProvisioningProfileError,
   packWindowsServerAsar,
   preflightWindowsDesktopBuild,
-  renderMacPasskeyEntitlements,
+  renderMacSigningEntitlements,
   resolveMacFileExclusions,
   resolveMacWebAuthnEntitlements,
   resolveMacPasskeySigningConfiguration,
@@ -515,15 +515,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
         undefined,
       );
-      const release = yield* createBuildConfig(
-        "mac",
-        "dmg",
-        "0.0.33",
-        false,
-        false,
-        undefined,
-        undefined,
-      );
+      const release = yield* createBuildConfig("mac", "dmg", "0.0.33", true, false, undefined, {
+        entitlementsPath: "/tmp/entitlements.mac.plist",
+      });
 
       const previewChannel = yield* createBuildConfig(
         "mac",
@@ -537,6 +531,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
       assert.isNull(preview.publish);
       assert.isNull(previewChannel.publish);
+      assert.isUndefined(preview.forceCodeSigning);
+      assert.isTrue(release.forceCodeSigning);
+      assert.include(release.mac, { entitlements: "/tmp/entitlements.mac.plist" });
+      assert.notProperty(release.mac, "provisioningProfile");
       assert.deepStrictEqual(release.publish, [
         {
           provider: "github",
@@ -1575,6 +1573,16 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
   });
 
+  it("keeps hardened runtime entitlements for signed macOS builds without passkey provisioning", () => {
+    const entitlements = renderMacSigningEntitlements();
+
+    assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");
+    assert.include(entitlements, "<key>com.apple.security.device.camera</key>");
+    assert.include(entitlements, "<key>com.apple.security.device.audio-input</key>");
+    assert.notInclude(entitlements, "com.apple.application-identifier");
+    assert.notInclude(entitlements, "com.apple.developer.associated-domains");
+  });
+
   it("normalizes explicit macOS passkey RP domains and renders required entitlements", () => {
     const configuration = resolveMacPasskeySigningConfiguration({
       T3CODE_APPLE_TEAM_ID: "ABC1234567",
@@ -1582,7 +1590,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       T3CODE_CLERK_PASSKEY_RP_DOMAINS:
         " Clerk.Example.com,example.clerk.accounts.dev,clerk.example.com ",
     });
-    const entitlements = renderMacPasskeyEntitlements(configuration, {
+    const entitlements = renderMacSigningEntitlements(configuration, {
       touchIdKeychainAccessGroup: undefined,
       browserPasskeys: false,
     });
@@ -1649,7 +1657,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       },
     );
 
-    const entitlements = renderMacPasskeyEntitlements(
+    const entitlements = renderMacSigningEntitlements(
       { ...configuration, rpDomains: ["clerk.example.com"], provisioningProfilePath: "" },
       resolveMacWebAuthnEntitlements(
         profile(

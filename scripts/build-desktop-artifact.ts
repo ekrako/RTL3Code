@@ -1352,21 +1352,31 @@ export function resolveMacWebAuthnEntitlements(
   };
 }
 
-export function renderMacPasskeyEntitlements(
-  configuration: MacPasskeySigningConfiguration,
-  webAuthn: MacWebAuthnEntitlements,
+export function renderMacSigningEntitlements(
+  configuration?: MacPasskeySigningConfiguration,
+  webAuthn?: MacWebAuthnEntitlements,
 ): string {
-  const associatedDomains = configuration.rpDomains
-    .map((domain) => `      <string>webcredentials:${escapeXml(domain)}</string>`)
-    .join("\n");
-  const keychainAccessGroups = webAuthn.touchIdKeychainAccessGroup
+  const passkeys = configuration
+    ? `
+    <key>com.apple.application-identifier</key>
+    <string>${escapeXml(`${configuration.teamId}.${configuration.appId}`)}</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>${escapeXml(configuration.teamId)}</string>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+${configuration.rpDomains
+  .map((domain) => `      <string>webcredentials:${escapeXml(domain)}</string>`)
+  .join("\n")}
+    </array>`
+    : "";
+  const keychainAccessGroups = webAuthn?.touchIdKeychainAccessGroup
     ? `
     <key>keychain-access-groups</key>
     <array>
       <string>${escapeXml(webAuthn.touchIdKeychainAccessGroup)}</string>
     </array>`
     : "";
-  const browserPasskeys = webAuthn.browserPasskeys
+  const browserPasskeys = webAuthn?.browserPasskeys
     ? `
     <key>${BROWSER_PASSKEYS_ENTITLEMENT}</key>
     <true/>`
@@ -1375,15 +1385,7 @@ export function renderMacPasskeyEntitlements(
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-  <dict>
-    <key>com.apple.application-identifier</key>
-    <string>${escapeXml(`${configuration.teamId}.${configuration.appId}`)}</string>
-    <key>com.apple.developer.team-identifier</key>
-    <string>${escapeXml(configuration.teamId)}</string>
-    <key>com.apple.developer.associated-domains</key>
-    <array>
-${associatedDomains}
-    </array>${keychainAccessGroups}${browserPasskeys}
+  <dict>${passkeys}${keychainAccessGroups}${browserPasskeys}
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
@@ -2778,10 +2780,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   signed: boolean,
   mockUpdates: boolean,
   mockUpdateServerPort: number | undefined,
-  macPasskeySigning:
+  macSigning:
     | {
         readonly entitlementsPath: string;
-        readonly provisioningProfilePath: string;
+        readonly provisioningProfilePath?: string;
       }
     | undefined,
   wslRuntimeBundled = false,
@@ -2836,6 +2838,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   if (platform === "mac") {
     const path = yield* Path.Path;
     const repoRoot = yield* RepoRoot;
+    if (signed) buildConfig.forceCodeSigning = true;
     buildConfig.mac = {
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
@@ -2880,10 +2883,12 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         },
       ],
       ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
-      ...(macPasskeySigning
+      ...(macSigning
         ? {
-            entitlements: macPasskeySigning.entitlementsPath,
-            provisioningProfile: macPasskeySigning.provisioningProfilePath,
+            entitlements: macSigning.entitlementsPath,
+            ...(macSigning.provisioningProfilePath
+              ? { provisioningProfile: macSigning.provisioningProfilePath }
+              : {}),
           }
         : {}),
     };
@@ -3858,10 +3863,14 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
+  const signMac = options.platform === "mac" && options.signed;
+  const macSigningEnv = signMac ? loadRepoEnv({ repoRoot }) : undefined;
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    macSigningEnv &&
+    (macSigningEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ||
+      macSigningEnv.T3CODE_CLERK_PASSKEY_RP_DOMAINS?.trim())
       ? yield* Effect.try({
-          try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
+          try: () => resolveMacPasskeySigningConfiguration(macSigningEnv),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
         })
       : undefined;
@@ -3874,11 +3883,11 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
         ),
       }
     : undefined;
-  const macEntitlementsPath = macPasskeySigning
+  const macEntitlementsPath = signMac
     ? path.join(stageAppDir, "entitlements.mac.plist")
     : undefined;
   let macWebAuthn: MacWebAuthnEntitlements | undefined;
-  if (macPasskeySigning && macEntitlementsPath) {
+  if (macPasskeySigning) {
     if (!(yield* fs.exists(macPasskeySigning.provisioningProfilePath))) {
       return yield* new MacProvisioningProfileNotFoundError({
         provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
@@ -3891,9 +3900,11 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     yield* Effect.log(
       `[desktop-artifact] In-app browser passkeys: Touch ID ${macWebAuthn.touchIdKeychainAccessGroup ? "enabled" : "disabled"}, browser passkeys ${macWebAuthn.browserPasskeys ? "enabled" : "disabled"}.`,
     );
+  }
+  if (macEntitlementsPath) {
     yield* fs.writeFileString(
       macEntitlementsPath,
-      renderMacPasskeyEntitlements(macPasskeySigning, macWebAuthn),
+      renderMacSigningEntitlements(macPasskeySigning, macWebAuthn),
     );
   }
 
@@ -3937,10 +3948,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
-      macPasskeySigning && macEntitlementsPath
+      macEntitlementsPath
         ? {
             entitlementsPath: macEntitlementsPath,
-            provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
+            ...(macPasskeySigning
+              ? { provisioningProfilePath: macPasskeySigning.provisioningProfilePath }
+              : {}),
           }
         : undefined,
       bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime }),
