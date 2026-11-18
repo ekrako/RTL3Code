@@ -37,7 +37,7 @@ jobs:
         with:
           ref: upstream-main
           ssh-key: ${{ secrets.UPSTREAM_SYNC_SSH_KEY }}
-          sparse-checkout: README.md
+          sparse-checkout: /README.md
           sparse-checkout-cone-mode: false
 
       - name: Mirror upstream main without extra commits
@@ -46,6 +46,8 @@ jobs:
           TARGET_SHA: ${{ steps.check.outputs.target_sha }}
         run: |
           set -euo pipefail
+          # Upstream has orphan gitlinks; an empty index lets checkout clean up credentials.
+          git read-tree --empty
           git remote add upstream https://github.com/pingdotgg/t3code.git
           git config remote.upstream.promisor true
           git config remote.upstream.partialclonefilter blob:none
