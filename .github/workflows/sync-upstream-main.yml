@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: sync-upstream-main
@@ -27,7 +27,7 @@ jobs:
           source_sha=$(git ls-remote --exit-code https://github.com/pingdotgg/t3code.git refs/heads/main | cut -f1)
           target_sha=$(git ls-remote --exit-code "$TARGET_URL" refs/heads/upstream-main | cut -f1)
           echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
-          if [[ "$source_sha" != "$target_sha" ]]; then
+          if [[ "$source_sha" != "$target_sha" || "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -36,6 +36,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: upstream-main
+          ssh-key: ${{ secrets.UPSTREAM_SYNC_SSH_KEY }}
           sparse-checkout: README.md
           sparse-checkout-cone-mode: false
 
