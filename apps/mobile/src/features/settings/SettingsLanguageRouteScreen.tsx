@@ -15,10 +15,6 @@ import { SettingsScreen } from "./components/SettingsScreen";
 
 /** General's row that opens the language picker, showing the current choice. */
 export function LanguageSettingsSection() {
-  return <LanguageRow />;
-}
-
-function LanguageRow() {
   const gt = useGT();
   const language = useLanguagePreference();
   return (
