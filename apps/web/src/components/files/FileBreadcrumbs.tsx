@@ -59,6 +59,7 @@ function BreadcrumbLabel(props: {
       <TooltipTrigger
         render={
           <span
+            dir="ltr"
             className={cn(
               "block max-w-40 truncate rounded-sm px-0.5",
               props.current ? "font-medium text-foreground" : "text-muted-foreground",
@@ -68,7 +69,9 @@ function BreadcrumbLabel(props: {
       >
         {props.label}
       </TooltipTrigger>
-      <TooltipPopup side="top">{props.pathLabel}</TooltipPopup>
+      <TooltipPopup side="top">
+        <bdi dir="ltr">{props.pathLabel}</bdi>
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -112,7 +115,9 @@ function BreadcrumbMenuContent(props: {
       align="start"
       side="bottom"
       onKeyDown={(event) => {
-        if (event.key !== "ArrowLeft" || !canGoBack || parentPath === null) return;
+        const backKey =
+          getComputedStyle(event.currentTarget).direction === "rtl" ? "ArrowRight" : "ArrowLeft";
+        if (event.key !== backKey || !canGoBack || parentPath === null) return;
         event.preventDefault();
         event.stopPropagation();
         props.onDirectoryChange(parentPath);
@@ -121,7 +126,7 @@ function BreadcrumbMenuContent(props: {
       {canGoBack && parentPath !== null ? (
         <>
           <MenuItem closeOnClick={false} onClick={() => props.onDirectoryChange(parentPath)}>
-            <ArrowLeftIcon />
+            <ArrowLeftIcon className="[&:dir(rtl)]:rotate-180" />
             <span className="truncate">
               <T>
                 Back to <Var>{pathLabel(parentPath, props.projectName)}</Var>
@@ -171,6 +176,7 @@ function BreadcrumbMenuContent(props: {
                     <TooltipTrigger
                       render={
                         <span
+                          dir="ltr"
                           className={cn(
                             "min-w-0 flex-1 truncate",
                             entry.ignored && "text-muted-foreground",
@@ -180,7 +186,9 @@ function BreadcrumbMenuContent(props: {
                     >
                       {entry.label}
                     </TooltipTrigger>
-                    <TooltipPopup side="right">{entry.path}</TooltipPopup>
+                    <TooltipPopup side="inline-end">
+                      <bdi dir="ltr">{entry.path}</bdi>
+                    </TooltipPopup>
                   </Tooltip>
                 </>
               );
@@ -191,7 +199,7 @@ function BreadcrumbMenuContent(props: {
                   onClick={() => props.onDirectoryChange(entry.path)}
                 >
                   {row}
-                  <ChevronRightIcon />
+                  <ChevronRightIcon className="[&:dir(rtl)]:rotate-180" />
                 </MenuItem>
               ) : (
                 <MenuRadioItem
@@ -258,7 +266,7 @@ function FolderContentsMenu(props: FileBreadcrumbsProps & { readonly crumb: File
           />
         }
       >
-        <ChevronRightIcon className="size-3.5" />
+        <ChevronRightIcon className="size-3.5 [&:dir(rtl)]:rotate-180" />
       </MenuTrigger>
       {open ? (
         <BreadcrumbMenuContent
@@ -299,9 +307,13 @@ function FolderBreadcrumb(props: {
           />
         }
       >
-        <span className="block truncate">{props.crumb.label}</span>
+        <span dir="ltr" className="block truncate">
+          {props.crumb.label}
+        </span>
       </TooltipTrigger>
-      <TooltipPopup side="top">{props.crumb.path || props.projectName}</TooltipPopup>
+      <TooltipPopup side="top">
+        <bdi dir="ltr">{props.crumb.path || props.projectName}</bdi>
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -347,7 +359,7 @@ export function FileBreadcrumbs(props: FileBreadcrumbsProps) {
               {index === breadcrumbs.length - 1 ? null : hostPath ? (
                 <ChevronRightIcon
                   aria-hidden
-                  className="mx-1 size-3.5 shrink-0 text-muted-foreground/60"
+                  className="mx-1 size-3.5 shrink-0 text-muted-foreground/60 [&:dir(rtl)]:rotate-180"
                 />
               ) : (
                 <FolderContentsMenu {...props} crumb={crumb} />
