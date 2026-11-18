@@ -27,6 +27,7 @@ import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { AppBar } from "../../components/ui/AppBar";
 import { useContentBottomInset, useContentTopInset } from "../../components/ui/useBarInset";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { useInterfaceDirection } from "../../i18n/I18nProvider";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -261,6 +262,7 @@ function ZipTreeRowView(props: {
   const gt = useGT();
   const messages = useMessages();
   const folder = entry ? null : zipFolderLabel(node.label);
+  const collapsedChevron = useInterfaceDirection() === "rtl" ? "chevron.left" : "chevron.right";
   return (
     <Pressable
       accessibilityRole="button"
@@ -273,7 +275,7 @@ function ZipTreeRowView(props: {
       <View className="w-4 items-center">
         {entry ? null : (
           <SymbolView
-            name={props.collapsed ? "chevron.right" : "chevron.down"}
+            name={props.collapsed ? collapsedChevron : "chevron.down"}
             size={12}
             tintColorClassName="accent-icon-muted"
             type="monochrome"

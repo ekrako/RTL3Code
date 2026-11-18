@@ -1433,7 +1433,7 @@ function MarkdownDetailsFold(props: {
       >
         <ThreadDisclosureChevron
           expanded={expanded}
-          collapsedDirection="right"
+          collapsedDirection="inline-end"
           size={12}
           tintColor={iconSubtleColor}
         />

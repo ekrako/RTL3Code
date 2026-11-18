@@ -225,7 +225,7 @@ const ChangedFilesTree = memo(function ChangedFilesTree(props: {
             aria-hidden="true"
             className={cn(
               "size-3.5 shrink-0 text-muted-foreground/70 transition-transform group-hover:text-foreground/80",
-              isExpanded && "rotate-90",
+              isExpanded ? "rotate-90" : "[&:dir(rtl)]:rotate-180",
             )}
           />
           {isExpanded ? (
