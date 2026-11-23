@@ -1,0 +1,379 @@
+name: RTL3Code Release
+
+on:
+  push:
+    tags: ["v*.*.*", "!v*-nightly.*", "!v*-preview.*"]
+  schedule:
+    - cron: "8,38 * * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options: [stable, nightly]
+        default: stable
+      version:
+        description: "Stable version (blank increments the last stable patch)"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rtl3code-release
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  prepare:
+    name: Resolve RTL3Code release
+    if: github.repository == 'ekrako/RTL3Code' && (github.event_name != 'schedule' || vars.PAUSE_NIGHTLY != 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      ref: ${{ github.sha }}
+      release_channel: ${{ steps.meta.outputs.release_channel }}
+      build: ${{ steps.meta.outputs.build }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts
+            apps/desktop/package.json
+          sparse-checkout-cone-mode: false
+      - id: meta
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { assertReleaseSource, shouldReleaseNightly } = require('./.github/scripts/check-nightly-release.cjs');
+            const channel = context.eventName === 'schedule' ? 'nightly' : context.eventName === 'push' ? 'stable' : process.env.CHANNEL;
+            await assertReleaseSource({ github, context, releaseChannel: channel });
+            if (context.eventName === 'schedule' && !await shouldReleaseNightly({ github, context, core })) {
+              core.setOutput('build', 'false');
+              return;
+            }
+            let base = JSON.parse(fs.readFileSync('apps/desktop/package.json', 'utf8')).version;
+            try {
+              const { data } = await github.rest.repos.getLatestRelease(context.repo);
+              base = data.tag_name.replace(/^v/, '');
+            } catch (error) { if (error.status !== 404) throw error; }
+            if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error(`Invalid stable base: ${base}`);
+            const [major, minor, patch] = base.split('.').map(Number);
+            const next = `${major}.${minor}.${patch + 1}`;
+            const utcDate = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+            const version = channel === 'nightly'
+              ? `${next}-nightly.${utcDate}.${context.runNumber}`
+              : context.eventName === 'push' ? context.ref.replace('refs/tags/v', '') : process.env.VERSION.trim() || next;
+            if (channel === 'stable' && !/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`Invalid stable version: ${version}`);
+            const tag = `v${version}`;
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({ ...context.repo, tag });
+              if (!data.draft) throw new Error(`${tag} is already published`);
+            } catch (error) { if (error.status !== 404) throw error; }
+            core.setOutput('version', version);
+            core.setOutput('tag', tag);
+            core.setOutput('release_channel', channel);
+            core.setOutput('build', 'true');
+            await core.summary.addHeading(`RTL3Code ${version}`).addRaw(`Source: ${context.sha}`).write();
+
+  build_bundle:
+    name: Build and verify shared bundle
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare.outputs.ref }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+      - name: Align package versions
+        run: node scripts/update-release-package-versions.ts "${{ needs.prepare.outputs.version }}"
+      - name: Focused release checks
+        run: vp test run scripts/build-desktop-artifact.test.ts scripts/merge-release-update-manifests.test.ts packages/shared/src/cliRelease.test.ts apps/desktop/src/updates/githubUpdateFeed.test.ts apps/server/src/cloud/npmRelease.test.ts
+      - name: Build desktop bundle
+        env:
+          T3CODE_TELEMETRY_CHANNEL: dev
+          VITE_RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel == 'stable' && 'latest' || 'nightly' }}
+        run: vp run build:desktop:bundle
+      - name: Verify preload
+        run: node apps/desktop/scripts/verify-preload-bundle.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: js-bundle
+          path: |
+            apps/server/dist
+            apps/desktop/dist-electron
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop_mac_arm64:
+    name: Desktop macOS arm64
+    needs: [prepare, build_bundle]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build_bundle.result == 'success' }}
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      relay_client_tracing: false
+      release_channel: ${{ needs.prepare.outputs.release_channel }}
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: macOS arm64
+      runner: macos-15
+      platform: mac
+      target: dmg
+      arch: arm64
+      rust_target: aarch64-apple-darwin
+      resource_key: darwin-arm64
+      cli_archive: true
+      launch_check: true
+      # desktop_mac_x64 saves the shared pnpm store; this job finishes last.
+      save_pnpm_store: false
+
+  desktop_mac_x64:
+    name: Desktop macOS x64
+    needs: [prepare, build_bundle]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build_bundle.result == 'success' }}
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      relay_client_tracing: false
+      release_channel: ${{ needs.prepare.outputs.release_channel }}
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: macOS x64
+      runner: macos-15-intel
+      platform: mac
+      target: dmg
+      arch: x64
+      rust_target: x86_64-apple-darwin
+      resource_key: darwin-x64
+      # No CLI archive: Node single-executables are unsupported on x64 macOS
+      # (the SEA docs list macOS as arm64 only) and the built binary segfaults
+      # on start. The x64 desktop app is Electron and unaffected.
+      cli_archive: false
+
+  desktop_linux_x64:
+    name: Desktop Linux x64
+    needs: [prepare, build_bundle]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build_bundle.result == 'success' }}
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      relay_client_tracing: false
+      release_channel: ${{ needs.prepare.outputs.release_channel }}
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: Linux x64
+      runner: ubuntu-24.04
+      platform: linux
+      target: AppImage
+      arch: x64
+      rust_target: x86_64-unknown-linux-gnu
+      resource_key: linux-x64
+      cli_archive: true
+      launch_check: true
+
+  # node-pty has no Linux prebuild and compiles from source, so the arm64 app
+  # and archive are built on arm64 hardware rather than cross-built.
+  desktop_linux_arm64:
+    name: Desktop Linux arm64
+    needs: [prepare, build_bundle]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build_bundle.result == 'success' }}
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      relay_client_tracing: false
+      release_channel: ${{ needs.prepare.outputs.release_channel }}
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: Linux arm64
+      runner: ubuntu-24.04-arm
+      platform: linux
+      target: AppImage
+      arch: arm64
+      rust_target: aarch64-unknown-linux-gnu
+      resource_key: linux-arm64
+      cli_archive: true
+
+  # The Windows jobs start with the other platforms and wait for the same-arch
+  # Linux CLI archive after their other setup. Packaging is mostly CPU and
+  # small-file work, which Linux runners do faster than Windows ones, so both
+  # Windows targets build and sign on Linux and only the native checks run on
+  # Windows.
+  desktop_win_x64:
+    name: Desktop Windows x64
+    needs: [prepare, build_bundle]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build_bundle.result == 'success' }}
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      relay_client_tracing: false
+      release_channel: ${{ needs.prepare.outputs.release_channel }}
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: Windows x64
+      runner: ubuntu-24.04
+      verify_runner: windows-2025
+      platform: win
+      target: nsis
+      arch: x64
+      rust_target: x86_64-pc-windows-msvc
+      resource_key: win32-x64
+      cli_archive: true
+
+  desktop_win_arm64:
+    name: Desktop Windows arm64
+    needs: [prepare, build_bundle]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.build_bundle.result == 'success' }}
+    uses: ./.github/workflows/release-desktop.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+      relay_client_tracing: false
+      release_channel: ${{ needs.prepare.outputs.release_channel }}
+      clerk_publishable_key: ""
+      clerk_jwt_template: ""
+      clerk_cli_oauth_client_id: ""
+      relay_url: ""
+      label: Windows arm64
+      runner: ubuntu-24.04
+      verify_runner: windows-11-arm
+      platform: win
+      target: nsis
+      arch: arm64
+      rust_target: aarch64-pc-windows-msvc
+      resource_key: win32-arm64
+      cli_archive: true
+
+  publish:
+    name: Publish RTL3Code and update feeds
+    needs:
+      [
+        prepare,
+        desktop_mac_arm64,
+        desktop_mac_x64,
+        desktop_linux_x64,
+        desktop_linux_arm64,
+        desktop_win_x64,
+        desktop_win_arm64,
+      ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+      RELEASE_SHA: ${{ needs.prepare.outputs.ref }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.prepare.outputs.ref }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/scripts...
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cli-*
+          path: release-assets
+          merge-multiple: true
+      - name: Merge architecture update manifests
+        run: node scripts/merge-release-update-manifests.ts release-assets
+      - name: Write release compatibility metadata
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const ids = fs.readdirSync('apps/server/src/persistence/Migrations').flatMap(name => {
+            const id = /^(\d+)_\w+\.ts$/.exec(name)?.[1];
+            return id === undefined ? [] : [Number(id)];
+          });
+          fs.writeFileSync('release-assets/release.json', JSON.stringify({
+            version: process.env.RELEASE_VERSION,
+            t3code: { databaseMigration: Math.max(0, ...ids) },
+          }) + '\n');
+          JS
+      - name: Include the installer icon
+        run: cp assets/dev/blueprint-universal-1024.png release-assets/rtl3code-icon.png
+      - name: Checksum published files
+        working-directory: release-assets
+        run: |
+          rm -f builder-debug.yml builder-effective-config.yaml SHA256SUMS
+          sha256sum * > SHA256SUMS
+      - name: Require successful CI for the release commit
+        run: |
+          ci_run=$(gh run list --workflow ci.yml --commit "$RELEASE_SHA" --event push --limit 1 --json databaseId --jq '.[0].databaseId')
+          [[ -n "$ci_run" && "$ci_run" != null ]] || { echo "No CI run found for $RELEASE_SHA" >&2; exit 1; }
+          gh run watch "$ci_run" --exit-status --interval 30
+      - name: Upload release before exposing it to updaters
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$RELEASE_SHA" --draft \
+              --title "RTL3Code $RELEASE_VERSION" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          if [[ "$RELEASE_CHANNEL" == nightly ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+          fi
+      - name: Update nightly discovery pointer
+        if: needs.prepare.outputs.release_channel == 'nightly'
+        run: |
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" --jq '{tag_name, name, body}' > nightly.json
+          if ! gh release view update-feed >/dev/null 2>&1; then
+            gh release create update-feed --prerelease --latest=false --title "RTL3Code update feed" \
+              --notes "The RTL3Code updater reads nightly.json to discover the latest nightly."
+          fi
+          gh release upload update-feed nightly.json --clobber
+          gh release edit update-feed --draft=false --prerelease --latest=false

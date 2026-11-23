@@ -80,10 +80,10 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chan
       if (failures-- > 0) return response.writeHead(504).end();
       const url = new URL(request.url ?? "/", "http://fixture");
       const body =
-        url.pathname === "/pingdotgg/t3code/releases/latest" &&
+        url.pathname === "/ekrako/RTL3Code/releases/latest" &&
         request.headers.accept === "application/json"
           ? { tag_name: "v1.2.3" }
-          : url.pathname === "/repos/pingdotgg/t3code/releases"
+          : url.pathname === "/repos/ekrako/RTL3Code/releases"
             ? { "1": nightlies, "2": [{ tag_name: `v${version}` }, { tag_name: "v1.2.3" }] }[
                 url.searchParams.get("page") ?? ""
               ]
@@ -286,7 +286,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh t3 
         script: "install.sh",
         home,
         binDir,
-        env: { HOME: root, SHELL: undefined, PATH: "/usr/bin:/bin" },
+        env: { HOME: root, SHELL: "", PATH: "/usr/bin:/bin" },
       });
       expect(noShell.code, noShell.output).toBe(0);
       expect(noShell.output).toContain(`Add ${binDir} to your PATH`);
@@ -631,4 +631,95 @@ if (process.env.T3_TEST_INSTALLER === 'first') await fetch(process.env.T3_TEST_O
       await NodeFSP.rm(root, { recursive: true, force: true });
     }
   });
+});
+
+describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("RTL3Code AppImage", () => {
+  it.each([false, true])(
+    "verifies downloaded files before replacing the launcher (tampered=%s)",
+    async (tampered) => {
+      const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "rtl3code-install-"));
+      try {
+        const home = NodePath.join(root, "home with spaces $literal");
+        const fixture = NodePath.join(root, "download");
+        const bin = NodePath.join(home, ".local/bin");
+        const arch = HostProcess.Architecture.defaultValue() === "arm64" ? "arm64" : "x64";
+        const asset = `RTL3Code-${arch}.AppImage`;
+        await NodeFSP.mkdir(bin, { recursive: true });
+        await NodeFSP.mkdir(fixture);
+        await NodeFSP.writeFile(
+          NodePath.join(fixture, asset),
+          '#!/bin/sh\nprintf "%s\\n" "$T3CODE_HOME" "$1"\n',
+        );
+        await NodeFSP.writeFile(NodePath.join(fixture, "rtl3code-icon.png"), "test icon");
+        await NodeFSP.writeFile(
+          NodePath.join(fixture, "SHA256SUMS"),
+          (
+            await Promise.all(
+              [asset, "rtl3code-icon.png"].map(
+                async (name) =>
+                  `${NodeCrypto.createHash("sha256")
+                    .update(await NodeFSP.readFile(NodePath.join(fixture, name)))
+                    .digest("hex")}  ${name}\n`,
+              ),
+            )
+          ).join(""),
+        );
+        if (tampered)
+          await NodeFSP.appendFile(NodePath.join(fixture, asset), "changed after checksumming");
+        const launcher = NodePath.join(bin, "rtl3code");
+        await NodeFSP.writeFile(launcher, "old launcher");
+        await NodeFSP.writeFile(
+          NodePath.join(bin, "curl"),
+          `#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) out=$2; shift 2 ;;
+    https://*) url=$1; shift ;;
+    *) shift ;;
+  esac
+done
+case "$url" in
+  https://github.com/ekrako/RTL3Code/releases/latest/download/*) cp "$FIXTURE/\${url##*/}" "$out" ;;
+  *) exit 9 ;;
+esac
+`,
+          { mode: 0o755 },
+        );
+        const env = {
+          ...process.env,
+          HOME: home,
+          XDG_DATA_HOME: NodePath.join(home, ".local/share"),
+          FIXTURE: fixture,
+          PATH: `${bin}:${process.env.PATH}`,
+          RTL3CODE_HOME: undefined,
+          T3CODE_DISABLE_AUTO_UPDATE: undefined,
+        };
+        const result = NodeChildProcess.spawnSync(
+          "bash",
+          [NodePath.join(import.meta.dirname, "install-rtl3code-appimage.sh")],
+          { env, encoding: "utf8" },
+        );
+        if (tampered) {
+          expect(result.status).not.toBe(0);
+          expect(await NodeFSP.readFile(launcher, "utf8")).toBe("old launcher");
+        } else {
+          expect(result.status, result.stdout + result.stderr).toBe(0);
+          expect(
+            NodeChildProcess.execFileSync(launcher, ["argument with spaces"], {
+              env,
+              encoding: "utf8",
+            }),
+          ).toBe(`${home}/.rtl3code\nargument with spaces\n`);
+          expect(await NodeFSP.readFile(launcher, "utf8")).not.toContain(
+            "T3CODE_DISABLE_AUTO_UPDATE",
+          );
+          expect(await NodeFSP.readFile(`${launcher}.before-appimage`, "utf8")).toBe(
+            "old launcher",
+          );
+        }
+      } finally {
+        await NodeFSP.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 });
